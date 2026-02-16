@@ -20,7 +20,7 @@ migrate from one clickhouse instance to another
 **Steps:**
 1. Copy table schema to target instance
 2. Use cursor-paginated `SELECT *` queries
-3. Convert data to Arrow/Parquet format (enables parallelization)
+3. Convert data to Parquet format (Parquet lends performance gains and Clickhouse has extensive support for Parquet)
 4. Ingest data into target instance
 
 **Advantages:** Better parallelism and more control over data transfer.
@@ -30,43 +30,26 @@ migrate from one clickhouse instance to another
 ## Ingestion Strategy
 
 ### Data Export
-- Use `clickhouse-connect` to select data
-- Convert to Arrow format
+- Use `clickhouse-connect` to select data, using the Arrow APIs
 - Write to Parquet files for efficient storage and transfer
+
+#### Parallelising Export
+- Partition source tables to parallelize export, with a worker handling each partition
+- Use checkpointing strategy to avoid rework when workers fail
 
 ### Data Import
 - Use **async insert** mode
 - Let the server handle batching internally for optimal performance
 
----
-
-## Configuration Guidelines
-
-### Insert Thread and Block Size Configuration
-
-**Recommended settings:**
+#### Configuration for Import Optimization
 
 ```
 max_insert_threads = ~half of available CPU cores
-```
-- Reserves remaining cores for background merges
-- Prevents resource contention
-
-**Memory-based block sizing formula:**
-
-```
+peak_memory_usage_in_bytes = entire RAM for isolated ingestion / 50% RAM or less if running concurrent tasks
 min_insert_block_size_bytes = peak_memory_usage_in_bytes / (~3 × max_insert_threads)
 ```
-
-Where:
-- `peak_memory_usage_in_bytes`: 
-  - Use all available RAM for isolated ingestion
-  - Use 50% or less if running concurrent tasks
-
-**Implementation:**
-- Set `min_insert_block_size_rows = 0` (disables row-based threshold)
-- Set `max_insert_threads` to chosen value
-- Set `min_insert_block_size_bytes` to calculated result from formula
+- Reserves remaining cores for background merges. Parts are merged to achieve 1.5 GB per part.
+- Prevents resource contention as more parts will require more merges
 
 ---
 
@@ -78,15 +61,14 @@ Where:
 - Partition on sort key
 - Execute series of SELECT queries per partition
 
-**Sort Key Options:**
+**Sort Key Types:**
 
 1. **Timestamp-based** (`ts`)
    - Natural chronological partitioning
-   - Good for time-series data
+   - Fine-grained partition size based on timestamp granularity
 
 2. **Low cardinality column** (e.g., country, state)
-   - Requires dynamic partitioning logic
-   - Useful for geographically distributed data
+   - Requires additional partitioning logic to control export-partition size
 
 ---
 
@@ -109,10 +91,5 @@ Where:
 
 ## Additional Migration Checklist
 
-Don't forget to copy:
 - **Indexes** (primary, secondary, skip indexes)
 - **Materialized views**
-- **Functions** (user-defined functions)
-- **Table schemas** (including column defaults, codecs, TTLs)
-- **Database schemas**
-- **Dictionaries**
