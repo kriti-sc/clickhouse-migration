@@ -8,6 +8,7 @@ We outline the approach to migrate from one ClickHouse instance to another, and 
 
 **Postgres-to-ClickHouse first-load** requires extracting massive volumes from a production database without degrading online performance and while staying withing SLA. A naive `SELECT *` would lock tables, spike CPU/memory, and slow down production queries. The challenge is streaming large result sets with extremely low latency while minimizing impact on the online system.
 
+---
 
 ## ClickHouse-to-ClickHouse migration
 
@@ -96,11 +97,12 @@ min_insert_block_size_bytes = peak_memory_usage_in_bytes / (~3 × max_insert_thr
 
 ---
 
-## Additional Migration Checklist
+### Additional Migration Checklist
 
 - **Indexes** (primary, secondary, skip indexes)
 - **Materialized views**
 
+---
 
 ## Postgres-to-ClickHouse first-load
 Use `postgres_scanner` DuckDB extension, which is *extremely* efficient (parallelizes internally, uses binary protocol to reduce serde cost) in downloading a Postgres table into Parquet files on filesystem
